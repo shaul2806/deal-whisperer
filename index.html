@@ -106,6 +106,12 @@
   .settings summary::before{content:"▸ "; color:var(--ink3);}
   .settings[open] summary::before{content:"▾ ";}
   .settings{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 20px; margin:16px 0;}
+  .set-bar{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:10px 0 4px;}
+  .set-hint{font-size:11.5px; color:var(--ink3);}
+  .set-actions{display:flex; align-items:center; gap:12px;}
+  .saved-note{font-size:12px; font-weight:600; color:var(--good,#0E8F6E); opacity:0; transition:opacity .2s ease;}
+  .reset-link{background:none; border:none; padding:0; font:inherit; font-size:12px; color:var(--ink2); text-decoration:underline; cursor:pointer;}
+  .reset-link:hover{color:var(--ink);}
   .set-block{margin-top:14px;}
   .set-block h4{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; color:var(--ink3); margin:0 0 8px;}
   .set-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px;}
@@ -226,6 +232,14 @@
 
   <details class="settings">
     <summary>Gate thresholds &amp; assumptions</summary>
+
+    <div class="set-bar">
+      <span class="set-hint">These rules are saved on this device and reload automatically.</span>
+      <span class="set-actions">
+        <span id="saved-note" class="saved-note">Saved ✓</span>
+        <button type="button" id="reset-settings" class="reset-link">Reset to defaults</button>
+      </span>
+    </div>
 
     <div class="set-block">
       <h4>BRRRR gates</h4>
@@ -504,7 +518,49 @@
   var ids=['price','arv','sqft','rehabpsf','rent','tax','ins',
            'b_ratio','b_cf','b_left','f_profit','f_roi','f_cash',
            'refiRate','ltv','dscr','hmRate','hmMonths','rehabMonths','closePct','agentPct','saleClosePct'];
+
+  // --- Persistence: save the underwriting rules (gates + financing assumptions), NOT the per-deal property fields.
+  var SETTINGS_IDS=['b_ratio','b_cf','b_left','f_profit','f_roi','f_cash',
+                    'refiRate','ltv','dscr','hmRate','hmMonths','rehabMonths','closePct','agentPct','saleClosePct'];
+  var STORE_KEY='dw_settings_v1';
+
+  function saveSettings(){
+    try{
+      var o={};
+      SETTINGS_IDS.forEach(function(id){ o[id]=$(id).value; });
+      o.loanMode=loanMode;
+      localStorage.setItem(STORE_KEY, JSON.stringify(o));
+      flashSaved();
+    }catch(e){}
+  }
+  function loadSettings(){
+    try{
+      var raw=localStorage.getItem(STORE_KEY);
+      if(!raw) return;
+      var o=JSON.parse(raw);
+      SETTINGS_IDS.forEach(function(id){ if(o[id]!==undefined) $(id).value=o[id]; });
+      if(o.loanMode) loanMode=o.loanMode;
+    }catch(e){}
+  }
+  var savedTimer=null;
+  function flashSaved(){
+    var el=$('saved-note'); if(!el) return;
+    el.style.opacity='1';
+    if(savedTimer) clearTimeout(savedTimer);
+    savedTimer=setTimeout(function(){ el.style.opacity='0'; }, 1200);
+  }
+
+  loadSettings();  // apply saved rules before first calc
+
   ids.forEach(function(id){ $(id).addEventListener('input',calc); $(id).addEventListener('change',calc); });
+  // Saving happens only for settings fields, on change (not every keystroke).
+  SETTINGS_IDS.forEach(function(id){ $(id).addEventListener('change', saveSettings); });
+
+  var resetBtn=$('reset-settings');
+  if(resetBtn) resetBtn.addEventListener('click', function(){
+    try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+    location.reload();
+  });
 
   // Editable lever fields: typing pushes the value into the matching slider (clamped), then recalcs.
   [['price-out','price'],['arv-out','arv'],['rent-out','rent'],['rehabpsf-out','rehabpsf']].forEach(function(pair){
@@ -528,6 +584,7 @@
     $('lm-arv').classList.toggle('on', mode==='arv');
     $('loanmode-desc').textContent = mode==='arv' ? 'max ARV-based loan' : 'limited by rent';
     calc();
+    if(typeof saveSettings==='function') saveSettings();
   }
   $('lm-rent').addEventListener('click', function(){ setLoanMode('rent'); });
   $('lm-arv').addEventListener('click', function(){ setLoanMode('arv'); });
